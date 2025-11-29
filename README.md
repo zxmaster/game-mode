@@ -22,21 +22,46 @@ Frees up system resources by stopping all running Docker containers and shutting
 2. 📦 Lists all running Docker containers
 3. ⏹️ Stops all running containers (with 10-second graceful timeout)
 4. 🤖 Stops LM Studio processes (gracefully, then forced if needed)
-5. 🔌 Shuts down WSL2 completely
+5. 🔌 Shuts down WSL2 completely (optional)
 6. 📝 Logs all operations to `docker_stop.log`
 
 ### Usage
+
+**Interactive Mode:**
 
 ```powershell
 .\game-mode.ps1
 ```
 
+**Skip All Prompts:**
+
+```powershell
+.\game-mode.ps1 -Force
+```
+
+**Skip WSL2 Shutdown:**
+
+```powershell
+.\game-mode.ps1 -SkipWSL
+```
+
+**Combined (No Prompts, Skip WSL2):**
+
+```powershell
+.\game-mode.ps1 -Force -SkipWSL
+```
+
+### Parameters
+
+- `-Force`: Skips all confirmation prompts (continues even without admin privileges)
+- `-SkipWSL`: Completely skips WSL2 shutdown step
+
 ### Requirements
 
 - Docker Desktop installed
-- WSL2 enabled
+- WSL2 enabled (optional if using `-SkipWSL`)
 - PowerShell 5.1 or later
-- Administrator privileges (recommended for WSL shutdown)
+- Administrator privileges recommended for WSL2 shutdown (can be skipped with `-Force` or `-SkipWSL`)
 
 ### Log File
 
@@ -79,13 +104,21 @@ Starts your development environment by ensuring WSL2 is running, Docker Desktop 
 
 ### Customization
 
-To modify which projects are started, edit the `$projects` array in the script:
+To modify which projects are started, edit the `config.env` file:
 
-```powershell
-$projects = @("infra-core", "librechat", "qdrant")
+```env
+# Docker Compose Project Configuration
+# List the Docker Compose project names to manage (one per line)
+# These projects will be started by work-mode.ps1
+
+infra-core
+librechat
+qdrant
 ```
 
-Add or remove project names as needed.
+Add or remove project names as needed. Lines starting with `#` are treated as comments.
+
+If `config.env` is not found, the script will use default projects: `infra-core`, `librechat`, `qdrant`.
 
 ### Log File
 
@@ -97,7 +130,7 @@ Add or remove project names as needed.
 
 ### Purpose
 
-Provides a comprehensive status check of all system components to determine if you're in "Game Mode" or "Work Mode".
+Provides a comprehensive status check of all system components to determine if you're in "Game Mode" or "Work Mode", with interactive options to switch modes.
 
 ### What It Does
 
@@ -108,13 +141,19 @@ Provides a comprehensive status check of all system components to determine if y
 5. 🗂️ Checks status of specific Docker Compose projects (infra-core, librechat, qdrant)
 6. 🤖 Checks LM Studio process status
 7. 📊 Calculates overall mode percentage and displays assessment
-8. 💡 Provides suggestions for incomplete setups
+8. 🎯 Provides interactive options to start Work Mode, Game Mode, or Exit
 
 ### Usage
 
 ```powershell
 .\check-mode.ps1
 ```
+
+After viewing the status, you'll be prompted to choose:
+
+- **[1] Start Work Mode** - Runs `work-mode.ps1` to start all services
+- **[2] Start Game Mode** - Runs `game-mode.ps1` to stop all services
+- **[3] Exit** - Closes the script
 
 ### Example Output
 
@@ -145,6 +184,14 @@ Checking LM Studio...
      Most development services are running (100% active)
 
 ========================================
+
+What would you like to do?
+
+  [1] Start Work Mode  (./work-mode.ps1)
+  [2] Start Game Mode  (./game-mode.ps1)
+  [3] Exit
+
+Enter your choice (1-3):
 ```
 
 ### Status Indicators
@@ -189,21 +236,44 @@ If your installation is in a different location, edit `work-mode.ps1` and update
 
 ### Docker Projects
 
-The `work-mode.ps1` script starts containers based on Docker Compose project labels. Ensure your Docker Compose files include the project name:
+The scripts manage Docker Compose projects listed in `config.env`.
+
+**To configure your projects:**
+
+1. Create or edit `config.env` in the script directory
+2. List one project name per line (matching your Docker Compose project labels)
+3. Lines starting with `#` are treated as comments
+
+**Example `config.env`:**
+
+```env
+# My Docker Projects
+infra-core
+librechat
+qdrant
+# my-custom-project
+```
+
+**How Docker Compose projects are identified:**
+
+The scripts use Docker Compose project labels to find containers. Ensure your projects are started with a project name:
+
+```bash
+# Using docker-compose
+docker-compose -p infra-core up -d
+
+# Using docker compose (v2)
+docker compose -p infra-core up -d
+```
+
+Or set the project name in your `docker-compose.yml`:
 
 ```yaml
-# docker-compose.yml example
-version: '3.8'
+# docker-compose.yml
+name: infra-core
 services:
   myservice:
     image: myimage
-    # Project name is set via: docker-compose -p infra-core up
-```
-
-Or start your projects with:
-
-```bash
-docker-compose -p infra-core up -d
 ```
 
 ### LM Studio Path
@@ -219,22 +289,30 @@ If LM Studio is installed in a different location, you can add the path to the `
 
 ## 📊 Example Output
 
-### game-mode.ps1
+### game-mode.ps1 (with -Force -SkipWSL)
 
 ```
 Starting game mode script (stopping Docker & WSL2)...
+
+[!] This script is not running with Administrator privileges.
+    Some operations (like WSL2 shutdown) may require admin rights.
+
+[i] Force mode enabled, continuing without prompts.
+
 [2025-11-30 14:30:00] Checking if 'docker' command is available...
 [2025-11-30 14:30:00] Found docker command. Proceeding...
 [2025-11-30 14:30:01] Getting list of running containers...
 [2025-11-30 14:30:01] Found 5 running containers. Stopping them all in parallel...
+Stopping Docker containers [########################################] 100% - Containers stopped
 [2025-11-30 14:30:12] ✅ All 5 containers stopped successfully.
 [2025-11-30 14:30:12] All containers have been stopped or checked.
 [2025-11-30 14:30:12] Checking for LM Studio processes...
 [2025-11-30 14:30:12] Found 1 LM Studio process(es). Stopping them...
+Stopping LM Studio gracefully [########################################] 100% - Checking status
 [2025-11-30 14:30:14] ✅ LM Studio processes stopped gracefully.
 [2025-11-30 14:30:14] Shutting down WSL2...
-[2025-11-30 14:30:17] ✅ WSL2 has been shut down successfully.
-[2025-11-30 14:30:17] Script completed.
+[2025-11-30 14:30:14] [i] WSL2 shutdown skipped (SkipWSL parameter).
+[2025-11-30 14:30:14] Script completed.
 Log file created at: docker_stop.log
 ```
 
@@ -295,6 +373,16 @@ Run this command in PowerShell as Administrator:
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine
 ```
 
+### Running without Administrator privileges
+
+**For WSL2 shutdown issues:**
+
+- Use `.\game-mode.ps1 -SkipWSL` to skip WSL2 shutdown entirely
+- Use `.\game-mode.ps1 -Force` to skip prompts (WSL2 shutdown may still fail)
+- WSL2 will remain running but Docker containers and LM Studio will be stopped
+
+**Alternative:** Right-click PowerShell and select "Run as Administrator" before running the script.
+
 ### "LM Studio executable not found"
 
 - Verify LM Studio is installed on your system
@@ -306,20 +394,26 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine
 
 ### Gaming Session
 
-1. Run `.\game-mode.ps1` before starting your game
-2. Frees up RAM and CPU resources used by Docker and WSL2
-3. Improves gaming performance
+1. Run `.\check-mode.ps1` to see current status
+2. Select option [2] to run Game Mode, or run `.\game-mode.ps1 -Force -SkipWSL` directly
+3. Frees up RAM and CPU resources used by Docker and WSL2
+4. Improves gaming performance
 
 ### Development Work
 
-1. Run `.\work-mode.ps1` when starting your workday
-2. Automatically starts all necessary development containers
-3. Ready to code in seconds
+1. Run `.\check-mode.ps1` to see current status
+2. Select option [1] to run Work Mode, or run `.\work-mode.ps1` directly
+3. Automatically starts all necessary development containers
+4. Ready to code in seconds
 
 ### Quick Switching
 
-- Keep both scripts in an easily accessible location
-- Create desktop shortcuts for one-click execution
+- Use `check-mode.ps1` as your main launcher for quick status check and mode switching
+- Keep scripts in an easily accessible location
+- Create desktop shortcuts for one-click execution:
+  - **Game Mode**: `powershell.exe -File "C:\path\to\game-mode.ps1" -Force -SkipWSL`
+  - **Work Mode**: `powershell.exe -File "C:\path\to\work-mode.ps1"`
+  - **Check Mode**: `powershell.exe -File "C:\path\to\check-mode.ps1"`
 - Use Task Scheduler to automate execution at specific times
 
 ## 📝 Log Files

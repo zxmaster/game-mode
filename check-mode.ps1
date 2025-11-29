@@ -148,7 +148,20 @@ if ($dockerEngineRunning) {
 
   # Check specific projects
   Write-Host "Checking Docker Projects..." -ForegroundColor Cyan
-  $projects = @("infra-core", "librechat", "qdrant")
+
+  # Load projects from config.env file
+  $configFile = Join-Path $PSScriptRoot "config.env"
+  $projects = @()
+
+  if (Test-Path $configFile) {
+    $projects = Get-Content $configFile | Where-Object {
+      $_ -notmatch '^\s*#' -and $_ -match '\S'
+    } | ForEach-Object { $_.Trim() }
+  }
+
+  if ($projects.Count -eq 0) {
+    $projects = @("infra-core", "librechat", "qdrant")
+  }
 
   foreach ($project in $projects) {
     try {

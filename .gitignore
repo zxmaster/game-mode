@@ -1,0 +1,43 @@
+# Log files
+docker_start.log
+docker_stop.log
+*.log
+
+# Environment configuration
+.env
+.env.local
+config.env
+
+# PowerShell temporary files
+*.ps1~
+*.swp
+
+# Windows thumbnail cache
+Thumbs.db
+ehthumbs.db
+
+# Windows Installer files
+*.cab
+*.msi
+*.msm
+*.msp
+
+# Windows shortcuts
+*.lnk
+
+# MacOS (if synced across systems)
+.DS_Store
+
+# IDE and editor files
+.vscode/
+.idea/
+*.code-workspace
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Temporary files
+*.tmp
+*.temp

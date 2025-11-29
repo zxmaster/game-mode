@@ -98,12 +98,12 @@ if ($null -eq $wslInstalled) {
 }
 else {
   try {
-    $wslStatus = wsl --status 2>&1
+    $null = wsl --status 2>&1
     if ($LASTEXITCODE -ne 0) {
       Write-Log "WSL2 is not running. Starting WSL2..."
       # Start WSL by running a simple command
       $wslJob = Start-Job -ScriptBlock {
-        $output = wsl --exec echo "WSL2 starting..." 2>&1
+        $output = wsl --exec echo 'WSL2 starting...' 2>&1
         return @{ Output = $output; ExitCode = $LASTEXITCODE }
       }
 
@@ -126,7 +126,7 @@ else {
     Write-Log "[!] Could not determine WSL2 status, attempting to start..."
     try {
       $wslJob = Start-Job -ScriptBlock {
-        $output = wsl --exec echo "WSL2 starting..." 2>&1
+        $output = wsl --exec echo 'WSL2 starting...' 2>&1
         return @{ Output = $output; ExitCode = $LASTEXITCODE }
       }
 
@@ -168,7 +168,7 @@ if ($null -eq $dockerDesktopProcess) {
     try {
       Start-Process $dockerDesktopPath -ErrorAction Stop
       Write-Log "Docker Desktop starting from: $dockerDesktopPath"
-      Write-Log "Waiting for Docker Desktop to start (30 seconds)..."
+      Write-Log "Waiting for Docker Desktop to start - 30 seconds..."
       Show-ProgressBar -Activity "Starting Docker Desktop" -DurationSeconds 30 -CompletedMessage "Verifying readiness"
 
       # Verify Docker is responding
@@ -176,7 +176,7 @@ if ($null -eq $dockerDesktopProcess) {
       $dockerReady = $false
       for ($i = 1; $i -le $retries; $i++) {
         try {
-          $testResult = docker ps 2>&1
+          $null = docker ps 2>&1
           if ($LASTEXITCODE -eq 0) {
             $dockerReady = $true
             Write-Log "[OK] Docker Desktop is ready."
@@ -273,8 +273,28 @@ else {
   Write-Log "[OK] LM Studio is already running."
 }
 
-# Define projects to start (by Docker Compose project name)
-$projects = @("infra-core", "librechat", "qdrant")
+# Load projects from config.env file
+$configFile = Join-Path $PSScriptRoot "config.env"
+$projects = @()
+
+if (Test-Path $configFile) {
+  Write-Log "Loading Docker Compose projects from config.env..."
+  $projects = Get-Content $configFile | Where-Object {
+    $_ -notmatch '^\s*#' -and $_ -match '\S'
+  } | ForEach-Object { $_.Trim() }
+
+  if ($projects.Count -eq 0) {
+    Write-Log "[!] No projects found in config.env. Using defaults..."
+    $projects = @("infra-core", "librechat", "qdrant")
+  }
+  else {
+    Write-Log "[OK] Loaded $($projects.Count) project(s) from config.env"
+  }
+}
+else {
+  Write-Log "[!] config.env not found. Using default projects..."
+  $projects = @("infra-core", "librechat", "qdrant")
+}
 
 # Start each project
 foreach ($project in $projects) {
