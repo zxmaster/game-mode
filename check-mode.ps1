@@ -101,7 +101,7 @@ if ($null -eq $dockerInstalled) {
 }
 else {
   try {
-    $dockerInfo = docker info 2>&1
+    docker info >$null 2>&1
     if ($LASTEXITCODE -eq 0) {
       Show-Status -Component "Docker Engine" -Status "RUNNING" -Details "Responding to commands"
       $dockerEngineRunning = $true

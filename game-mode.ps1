@@ -15,7 +15,6 @@ $logFile = "docker_stop.log"
 if (Test-Path $logFile) {
   Remove-Item $logFile -Force
 }
-
 Write-Host "Starting game mode script (stopping Docker & WSL2)..." -ForegroundColor Cyan
 Write-Host ""
 
@@ -100,43 +99,33 @@ Write-Log "Found docker command. Proceeding..."
 # Get running containers
 Write-Log "Getting list of running containers..."
 try {
-  $containers = docker ps -q 2>&1
-
-  if ($LASTEXITCODE -ne 0) {
-    Write-Log "[!] Failed to query Docker containers. Is Docker running?"
-    $containers = $null
+  $raw = docker ps -q 2>&1
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($raw)) {
+    Write-Log "No running containers found or Docker not responding."
+    $containerList = @()
+  }
+  else {
+    $containerList = $raw -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" }
   }
 }
 catch {
   Write-Log "[!] Error querying Docker: $_"
-  $containers = $null
+  $containerList = @()
 }
 
-if ($null -eq $containers -or $containers.Count -eq 0 -or $containers -eq "") {
+if ($containerList.Count -eq 0) {
   Write-Log "No running containers found."
 }
 else {
-  $containerCount = ($containers | Measure-Object).Count
-  Write-Log "Found $containerCount running containers. Stopping them all in parallel..."
+  $containerCount = $containerList.Count
+  Write-Log "Found $containerCount running containers. Stopping them..."
 
   try {
-    # Stop all containers at once with progress bar
-    $stopJob = Start-Job -ScriptBlock {
-      param($c)
-      docker stop $c -t 10 2>&1
-    } -ArgumentList (, $containers)
-
+    # Stop all containers at once (docker stop accepts multiple IDs)
+    $stopOutput = docker stop $containerList -t 10 2>&1
+    $stopOutput | ForEach-Object { Write-Log "docker: $_" }
     Show-ProgressBar -Activity "Stopping Docker containers" -DurationSeconds 10 -CompletedMessage "Containers stopped"
-    $jobResult = $stopJob | Wait-Job | Receive-Job
-    $jobState = $stopJob.State
-    Remove-Job -Job $stopJob
-
-    if ($jobState -eq "Completed") {
-      Write-Log "[OK] All $containerCount containers stopped successfully."
-    }
-    else {
-      Write-Log "[!] Some containers may have failed to stop. Job state: $jobState"
-    }
+    Write-Log "[OK] Stop command issued for $containerCount container(s)."
   }
   catch {
     Write-Log "[!] Error stopping containers: $_"
@@ -147,25 +136,30 @@ Write-Log "All containers have been stopped or checked."
 
 # Stop LM Studio
 Write-Log "Checking for LM Studio processes..."
-$lmStudioProcesses = Get-Process -Name "LM Studio" -ErrorAction SilentlyContinue
+$lmStudioProcesses = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+  ($_.ProcessName -match 'LM.?Studio') -or ($_.MainWindowTitle -and $_.MainWindowTitle -match 'LM Studio')
+}
 
-if ($null -eq $lmStudioProcesses) {
+if (-not $lmStudioProcesses) {
   Write-Log "No LM Studio processes found running."
 }
 else {
-  $processCount = ($lmStudioProcesses | Measure-Object).Count
+  $processCount = $lmStudioProcesses.Count
   Write-Log "Found $processCount LM Studio process(es). Stopping them..."
 
   try {
     $lmStudioProcesses | ForEach-Object {
-      $_.CloseMainWindow() | Out-Null
+      try { $_.CloseMainWindow() | Out-Null } catch {}
     }
     Show-ProgressBar -Activity "Stopping LM Studio gracefully" -DurationSeconds 2 -CompletedMessage "Checking status"
 
     # Force stop if still running
-    $remainingProcesses = Get-Process -Name "LM Studio" -ErrorAction SilentlyContinue
-    if ($null -ne $remainingProcesses) {
-      Stop-Process -Name "LM Studio" -Force -ErrorAction SilentlyContinue
+    $remainingProcesses = Get-Process -ErrorAction SilentlyContinue | Where-Object {
+      ($_.ProcessName -match 'LM.?Studio') -or ($_.MainWindowTitle -and $_.MainWindowTitle -match 'LM Studio')
+    }
+    if ($remainingProcesses) {
+      $ids = $remainingProcesses | Select-Object -ExpandProperty Id
+      Stop-Process -Id $ids -Force -ErrorAction SilentlyContinue
       Write-Log "[OK] LM Studio processes stopped (forced)."
     }
     else {
@@ -177,15 +171,55 @@ else {
   }
 }
 
+
+# Stop Docker Desktop
+Write-Log "Checking for Docker Desktop process..."
+$dockerDesktopProcess = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -match 'Docker' -or $_.ProcessName -match 'DockerDesktop' }
+if (-not $dockerDesktopProcess) {
+  Write-Log "No Docker Desktop process found running."
+}
+else {
+  Write-Log "Docker Desktop is running. Attempting graceful shutdown..."
+  $dockerDesktopPaths = @(
+    "C:\Program Files\Docker\Docker\Docker Desktop.exe",
+    "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe",
+    "${env:ProgramFiles(x86)}\Docker\Docker\Docker Desktop.exe",
+    "$env:LOCALAPPDATA\Programs\Docker\Docker Desktop.exe"
+  )
+  $dockerDesktopExe = $null
+  foreach ($path in $dockerDesktopPaths) {
+    if (Test-Path $path) {
+      $dockerDesktopExe = $path
+      break
+    }
+  }
+  if ($null -ne $dockerDesktopExe) {
+    try {
+      Write-Log "Running: '$dockerDesktopExe --shutdown'"
+      Start-Process -FilePath $dockerDesktopExe -ArgumentList '--shutdown' -ErrorAction Stop
+      Show-ProgressBar -Activity "Gracefully shutting down Docker Desktop" -DurationSeconds 5 -CompletedMessage "Shutdown command sent"
+      Write-Log "[OK] Docker Desktop shutdown command sent."
+    }
+    catch {
+      Write-Log "[!] Error sending shutdown command to Docker Desktop: $_"
+    }
+  }
+  else {
+    Write-Log "[!] Docker Desktop executable not found in common locations."
+  }
+}
+
 # Stop WSL2
 Write-Log "Shutting down WSL2..."
-
 if ($SkipWSL) {
   Write-Log "[i] WSL2 shutdown skipped (SkipWSL parameter)."
 }
 elseif (-not $isAdmin) {
   Write-Log "[!] WSL2 shutdown requires Administrator privileges."
-  if (-not $Force) {
+  if ($Force) {
+    Write-Log "[i] WSL2 shutdown skipped (Force mode without admin)."
+  }
+  else {
     $response = Read-Host "Skip WSL2 shutdown? (Y/N)"
     if ($response -match '^[Yy]') {
       Write-Log "[i] WSL2 shutdown skipped by user."
@@ -194,7 +228,6 @@ elseif (-not $isAdmin) {
       try {
         # Check if WSL is installed
         $wslInstalled = Get-Command wsl -ErrorAction SilentlyContinue
-
         if ($null -eq $wslInstalled) {
           Write-Log "[!] WSL command not found. WSL may not be installed."
         }
@@ -203,12 +236,10 @@ elseif (-not $isAdmin) {
             $output = wsl --shutdown 2>&1
             return @{ Output = $output; ExitCode = $LASTEXITCODE }
           }
-
           Show-ProgressBar -Activity "Shutting down WSL2" -DurationSeconds 3 -CompletedMessage "WSL2 shutdown complete"
           $result = $wslJob | Wait-Job | Receive-Job
           $jobState = $wslJob.State
           Remove-Job -Job $wslJob
-
           if ($jobState -eq "Completed" -and ($result.ExitCode -eq 0 -or $null -eq $result.ExitCode)) {
             Write-Log "[OK] WSL2 has been shut down successfully."
           }
@@ -225,15 +256,11 @@ elseif (-not $isAdmin) {
       }
     }
   }
-  else {
-    Write-Log "[i] WSL2 shutdown skipped (Force mode without admin)."
-  }
 }
 else {
   try {
     # Check if WSL is installed
     $wslInstalled = Get-Command wsl -ErrorAction SilentlyContinue
-
     if ($null -eq $wslInstalled) {
       Write-Log "[!] WSL command not found. WSL may not be installed."
     }
@@ -242,12 +269,10 @@ else {
         $output = wsl --shutdown 2>&1
         return @{ Output = $output; ExitCode = $LASTEXITCODE }
       }
-
       Show-ProgressBar -Activity "Shutting down WSL2" -DurationSeconds 3 -CompletedMessage "WSL2 shutdown complete"
       $result = $wslJob | Wait-Job | Receive-Job
       $jobState = $wslJob.State
       Remove-Job -Job $wslJob
-
       if ($jobState -eq "Completed" -and ($result.ExitCode -eq 0 -or $null -eq $result.ExitCode)) {
         Write-Log "[OK] WSL2 has been shut down successfully."
       }
@@ -262,7 +287,8 @@ else {
   catch {
     Write-Log "[!] Error shutting down WSL2: $_"
   }
-}  Write-Log "Script completed."
+}
+Write-Log "Script completed."
 
 # Optional: Show log file path
 Write-Host "Log file created at: $logFile" -ForegroundColor Green
