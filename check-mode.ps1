@@ -251,6 +251,37 @@ elseif ($modePercentage -ge 25) {
   Write-Host ""
 }
 
-# Keep window open
-Write-Host "Press any key to exit..." -ForegroundColor DarkGray
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+# Prompt user for action
+Write-Host "What would you like to do?" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "  [1] Start Work Mode  (./work-mode.ps1)" -ForegroundColor Green
+Write-Host "  [2] Start Game Mode  (./game-mode.ps1)" -ForegroundColor Red
+Write-Host "  [3] Exit" -ForegroundColor Gray
+Write-Host ""
+
+$choice = Read-Host "Enter your choice (1-3)"
+
+switch ($choice) {
+  "1" {
+    Write-Host ""
+    Write-Host "Starting Work Mode..." -ForegroundColor Green
+    Write-Host ""
+    & "$PSScriptRoot\work-mode.ps1"
+  }
+  "2" {
+    Write-Host ""
+    Write-Host "Starting Game Mode..." -ForegroundColor Red
+    Write-Host ""
+    & "$PSScriptRoot\game-mode.ps1"
+  }
+  "3" {
+    Write-Host ""
+    Write-Host "Exiting..." -ForegroundColor Gray
+    exit 0
+  }
+  default {
+    Write-Host ""
+    Write-Host "Invalid choice. Exiting..." -ForegroundColor Yellow
+    exit 0
+  }
+}

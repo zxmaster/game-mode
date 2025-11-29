@@ -88,8 +88,8 @@ Write-Log "Checking WSL2 status..."
 $wslInstalled = Get-Command wsl -ErrorAction SilentlyContinue
 
 if ($null -eq $wslInstalled) {
-  Write-Log "[!] WSL command not found. WSL may not be installed.""
-  Write-Log "    Please install WSL2 using: wsl --install""
+  Write-Log "[!] WSL command not found. WSL may not be installed."
+  Write-Log "    Please install WSL2 using: wsl --install"
   $response = Read-Host "Continue without WSL2? (Y/N)"
   if ($response -notmatch '^[Yy]') {
     Write-Log "Script cancelled by user."
@@ -102,41 +102,41 @@ else {
     if ($LASTEXITCODE -ne 0) {
       Write-Log "WSL2 is not running. Starting WSL2..."
       # Start WSL by running a simple command
-      $wslJob = Start-Job -ScriptBlock { 
+      $wslJob = Start-Job -ScriptBlock {
         $output = wsl --exec echo "WSL2 starting..." 2>&1
         return @{ Output = $output; ExitCode = $LASTEXITCODE }
       }
-      
+
       Show-ProgressBar -Activity "Starting WSL2" -DurationSeconds 5 -CompletedMessage "WSL2 ready"
       $result = $wslJob | Wait-Job | Receive-Job
       Remove-Job -Job $wslJob
-      
+
       if ($result.ExitCode -eq 0 -or $null -eq $result.ExitCode) {
-        Write-Log "[OK] WSL2 has been started."d."
+        Write-Log "[OK] WSL2 has been started."
       }
       else {
-        Write-Log "[!] WSL2 may not have started correctly. Exit code: $($result.ExitCode)""
+        Write-Log "[!] WSL2 may not have started correctly. Exit code: $($result.ExitCode)"
       }
     }
     else {
-      Write-Log "[OK] WSL2 is already running."g."
+      Write-Log "[OK] WSL2 is already running."
     }
   }
   catch {
-    Write-Log "[!] Could not determine WSL2 status, attempting to start...""
-      try {
-        $wslJob = Start-Job -ScriptBlock { 
-          $output = wsl --exec echo "WSL2 starting..." 2>&1
-          return @{ Output = $output; ExitCode = $LASTEXITCODE }
-        }
-      
-        Show-ProgressBar -Activity "Starting WSL2" -DurationSeconds 5 -CompletedMessage "WSL2 ready"
-        $result = $wslJob | Wait-Job | Receive-Job
-        Remove-Job -Job $wslJob
-        Write-Log "WSL2 start attempt completed."
+    Write-Log "[!] Could not determine WSL2 status, attempting to start..."
+    try {
+      $wslJob = Start-Job -ScriptBlock {
+        $output = wsl --exec echo "WSL2 starting..." 2>&1
+        return @{ Output = $output; ExitCode = $LASTEXITCODE }
       }
-      catch {
-        Write-Log "[!] Error starting WSL2: $_""
+
+      Show-ProgressBar -Activity "Starting WSL2" -DurationSeconds 5 -CompletedMessage "WSL2 ready"
+      $result = $wslJob | Wait-Job | Receive-Job
+      Remove-Job -Job $wslJob
+      Write-Log "WSL2 start attempt completed."
+    }
+    catch {
+      Write-Log "[!] Error starting WSL2: $_"
     }
   }
 }
@@ -155,7 +155,7 @@ if ($null -eq $dockerDesktopProcess) {
     "${env:ProgramFiles(x86)}\Docker\Docker\Docker Desktop.exe",
     "$env:LOCALAPPDATA\Programs\Docker\Docker Desktop.exe"
   )
-  
+
   $dockerDesktopPath = $null
   foreach ($path in $dockerDesktopPaths) {
     if (Test-Path $path) {
@@ -163,7 +163,7 @@ if ($null -eq $dockerDesktopProcess) {
       break
     }
   }
-  
+
   if ($null -ne $dockerDesktopPath) {
     try {
       Start-Process $dockerDesktopPath -ErrorAction Stop
@@ -179,22 +179,22 @@ if ($null -eq $dockerDesktopProcess) {
           $testResult = docker ps 2>&1
           if ($LASTEXITCODE -eq 0) {
             $dockerReady = $true
-            Write-Log "[OK] Docker Desktop is ready."y."
-        break
-      }
-    }
-    catch {
-      # Silently continue
-    }
-        
-    if ($i -lt $retries) {
-      Write-Log "Waiting for Docker to be ready... (attempt $i/$retries)"
-      Start-Sleep -Seconds 10
-    }
-  }
+            Write-Log "[OK] Docker Desktop is ready."
+            break
+          }
+        }
+        catch {
+          # Silently continue
+        }
 
-  if (-not $dockerReady) {
-    Write-Log "[!] Docker Desktop may not be fully ready yet.""
+        if ($i -lt $retries) {
+          Write-Log "Waiting for Docker to be ready... (attempt $i/$retries)"
+          Start-Sleep -Seconds 10
+        }
+      }
+
+      if (-not $dockerReady) {
+        Write-Log "[!] Docker Desktop may not be fully ready yet."
         $response = Read-Host "Continue anyway? (Y/N)"
         if ($response -notmatch '^[Yy]') {
           Write-Log "Script cancelled by user."
@@ -203,113 +203,113 @@ if ($null -eq $dockerDesktopProcess) {
       }
     }
     catch {
-      Write-Log "[!] Error starting Docker Desktop: $_""
-    $response = Read-Host "Continue without Docker Desktop? (Y/N)"
-    if ($response -notmatch '^[Yy]') {
-      Write-Log "Script cancelled by user."
-      exit 0
-    }
-  }
-}
-else {
-  Write-Log "[!] Docker Desktop executable not found in any common location.""
-    Write-Log "    Checked paths:""
-  foreach ($path in $dockerDesktopPaths) {
-    Write-Log "    - $path""
-    }
-    $response = Read-Host "Continue without Docker Desktop? (Y/N)"
-    if ($response -notmatch '^[Yy]') {
-      Write-Log "Script cancelled by user."
-      exit 0
-    }
-  }
-}
-else {
-  Write-Log "[OK] Docker Desktop is already running."g."
-  }
-
-  # Start LM Studio
-  Write-Log "Checking if LM Studio is running..."
-  $lmStudioProcess = Get-Process -Name "LM Studio" -ErrorAction SilentlyContinue
-
-  if ($null -eq $lmStudioProcess) {
-    Write-Log "LM Studio is not running. Starting LM Studio..."
-
-    # Common LM Studio installation paths
-    $lmStudioPaths = @(
-      "$env:LOCALAPPDATA\Programs\LM Studio\LM Studio.exe",
-      "$env:LOCALAPPDATA\LMStudio\LM Studio.exe",
-      "C:\Program Files\LM Studio\LM Studio.exe",
-      "C:\Program Files (x86)\LM Studio\LM Studio.exe"
-    )
-
-    $lmStudioPath = $null
-    foreach ($path in $lmStudioPaths) {
-      if (Test-Path $path) {
-        $lmStudioPath = $path
-        break
+      Write-Log "[!] Error starting Docker Desktop: $_"
+      $response = Read-Host "Continue without Docker Desktop? (Y/N)"
+      if ($response -notmatch '^[Yy]') {
+        Write-Log "Script cancelled by user."
+        exit 0
       }
     }
+  }
+  else {
+    Write-Log "[!] Docker Desktop executable not found in any common location."
+    Write-Log "    Checked paths:"
+    foreach ($path in $dockerDesktopPaths) {
+      Write-Log "    - $path"
+    }
+    $response = Read-Host "Continue without Docker Desktop? (Y/N)"
+    if ($response -notmatch '^[Yy]') {
+      Write-Log "Script cancelled by user."
+      exit 0
+    }
+  }
+}
+else {
+  Write-Log "[OK] Docker Desktop is already running."
+}
 
-    if ($null -ne $lmStudioPath) {
-      try {
-        Start-Process $lmStudioPath
-        Write-Log "[OK] LM Studio started from: $lmStudioPath"th"
+# Start LM Studio
+Write-Log "Checking if LM Studio is running..."
+$lmStudioProcess = Get-Process -Name "LM Studio" -ErrorAction SilentlyContinue
+
+if ($null -eq $lmStudioProcess) {
+  Write-Log "LM Studio is not running. Starting LM Studio..."
+
+  # Common LM Studio installation paths
+  $lmStudioPaths = @(
+    "$env:LOCALAPPDATA\Programs\LM Studio\LM Studio.exe",
+    "$env:LOCALAPPDATA\LMStudio\LM Studio.exe",
+    "C:\Program Files\LM Studio\LM Studio.exe",
+    "C:\Program Files (x86)\LM Studio\LM Studio.exe"
+  )
+
+  $lmStudioPath = $null
+  foreach ($path in $lmStudioPaths) {
+    if (Test-Path $path) {
+      $lmStudioPath = $path
+      break
+    }
+  }
+
+  if ($null -ne $lmStudioPath) {
+    try {
+      Start-Process $lmStudioPath
+      Write-Log "[OK] LM Studio started from: $lmStudioPath"
       Show-ProgressBar -Activity "Initializing LM Studio" -DurationSeconds 3 -CompletedMessage "LM Studio ready"
     }
     catch {
-      Write-Log "[!] Error starting LM Studio: $_""
-      }
+      Write-Log "[!] Error starting LM Studio: $_"
     }
-    else {
-      Write-Log "[!] LM Studio executable not found in common installation locations.""
-    Write-Log "    Checked locations:""
-      foreach ($path in $lmStudioPaths) {
-        Write-Log "    - $path""
+  }
+  else {
+    Write-Log "[!] LM Studio executable not found in common installation locations."
+    Write-Log "    Checked locations:"
+    foreach ($path in $lmStudioPaths) {
+      Write-Log "    - $path"
     }
   }
 }
 else {
-  Write-Log "[OK] LM Studio is already running."g."
-      }
+  Write-Log "[OK] LM Studio is already running."
+}
 
-      # Define projects to start (by Docker Compose project name)
-      $projects = @("infra-core", "librechat", "qdrant")
+# Define projects to start (by Docker Compose project name)
+$projects = @("infra-core", "librechat", "qdrant")
 
-      # Start each project
-      foreach ($project in $projects) {
-        Write-Log "Starting Docker Compose project: $project..."
+# Start each project
+foreach ($project in $projects) {
+  Write-Log "Starting Docker Compose project: $project..."
 
-        try {
-          # Get containers for this project
-          $projectContainers = docker ps -a --filter "label=com.docker.compose.project=$project" -q 2>&1
-    
-          if ($LASTEXITCODE -ne 0) {
-            Write-Log "[!] Failed to query containers for project '$project'.""
+  try {
+    # Get containers for this project
+    $projectContainers = docker ps -a --filter "label=com.docker.compose.project=$project" -q 2>&1
+
+    if ($LASTEXITCODE -ne 0) {
+      Write-Log "[!] Failed to query containers for project '$project'."
       continue
     }
-    
+
     if ($null -eq $projectContainers -or $projectContainers -eq "") {
       Write-Log "[i] No containers found for project '$project'. Skipping..."
       continue
     }
-    
+
     # Start all containers for the project
     $startResult = docker start $projectContainers 2>&1
 
     if ($LASTEXITCODE -eq 0) {
       $containerCount = ($projectContainers | Measure-Object).Count
-      Write-Log "[OK] Project '$project' started successfully ($containerCount container(s)).")."
-          }
-          else {
-            Write-Log "[!] Some containers in project '$project' may have failed to start.""
+      Write-Log "[OK] Project '$project' started successfully ($containerCount container(s))."
+    }
+    else {
+      Write-Log "[!] Some containers in project '$project' may have failed to start."
       if ($startResult) {
-        Write-Log "    Error: $startResult""
-          }
-        }
+        Write-Log "    Error: $startResult"
       }
-      catch {
-        Write-Log "[!] Error starting project '$project': $_""
+    }
+  }
+  catch {
+    Write-Log "[!] Error starting project '$project': $_"
   }
 }
 
