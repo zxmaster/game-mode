@@ -5,7 +5,16 @@
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "   System Mode Status Check" -ForegroundColor Cyan
+# Rainbow "GAMING MODE" title
+$title = "GAMING MODE"
+$titleColors = @("Red", "Yellow", "Green", "Cyan", "Blue", "Magenta")
+Write-Host -NoNewline "   "
+for ($i = 0; $i -lt $title.Length; $i++) {
+  $ch = $title[$i]
+  $color = $titleColors[$i % $titleColors.Count]
+  Write-Host -NoNewline $ch -ForegroundColor $color
+}
+Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -41,6 +50,45 @@ function Show-Status {
   }
   else {
     Write-Host ""
+  }
+}
+
+# Check processes and report memory usage
+function Check-ProcessMemory {
+  param(
+    [string[]]$Processes,
+    [int]$WarnMB = 1024
+  )
+  $notFound = @()
+  foreach ($p in $Processes) {
+    try {
+      $procs = Get-Process -Name $p -ErrorAction SilentlyContinue
+
+      if ($null -eq $procs) {
+        $notFound += $p
+      }
+      else {
+        $count = ($procs | Measure-Object).Count
+        $totalBytes = ($procs | Measure-Object -Property WorkingSet64 -Sum).Sum
+        $totalMB = [math]::Round(($totalBytes / 1MB), 2)
+        $details = "$totalMB MB across $count process(es)"
+
+        if ($totalMB -ge $WarnMB) {
+          Show-Status -Component $p -Status "PARTIAL" -Details "$details - Consider closing manually"
+        }
+        else {
+          Show-Status -Component $p -Status "RUNNING" -Details $details
+        }
+      }
+    }
+    catch {
+      Show-Status -Component $p -Status "STOPPED" -Details "Unable to query"
+    }
+  }
+
+  if ($notFound.Count -gt 0) {
+    $list = ($notFound -join ", ")
+    Show-Status -Component "Not Running" -Status "NOT FOUND" -Details $list
   }
 }
 
@@ -204,6 +252,49 @@ else {
   $lmStudioRunning = $true
 }
 
+# Check common browsers and IDEs for memory usage
+Write-Host "Checking Common Browsers/IDEs (memory usage)..." -ForegroundColor Cyan
+$commonApps = @(
+  "chrome",            # Google Chrome
+  "Code",              # VS Code
+  "Code - Insiders",   # VS Code Insiders (variant names)
+  "code-insiders",     # alternative Insiders process name
+  "devenv",            # Visual Studio (devenv.exe)
+  "idea64",            # IntelliJ/IDEA
+  "pycharm64",         # PyCharm
+  "rider64",           # JetBrains Rider
+  "cursor",            # Cursor IDE
+  "vscodium",          # VSCodium
+  "vscodium-insiders", # VSCodium Insiders (fork variant)
+  "sublime_text",      # Sublime Text
+  "notepad++"          # Notepad++
+)
+
+Check-ProcessMemory -Processes $commonApps -WarnMB 1024
+
+# Check VMware processes specifically and advise manual closure (VMs are like IDEs)
+Write-Host "Checking VMware..." -ForegroundColor Cyan
+$vmProcesses = @()
+try {
+  $vmProcesses += Get-Process -Name "vmware" -ErrorAction SilentlyContinue
+  $vmProcesses += Get-Process -Name "vmware-vmx" -ErrorAction SilentlyContinue
+  $vmProcesses += Get-Process -Name "vmplayer" -ErrorAction SilentlyContinue
+}
+catch {
+  # ignore errors
+}
+
+if ($vmProcesses -and $vmProcesses.Count -gt 0) {
+  $count = ($vmProcesses | Measure-Object).Count
+  $totalMB = [math]::Round((($vmProcesses | Measure-Object -Property WorkingSet64 -Sum).Sum / 1MB), 2)
+  Show-Status -Component "VMware" -Status "PARTIAL" -Details "$totalMB MB across $count process(es) - Manual: close VMs/VMware if you plan to game"
+  $vmwareRunning = $true
+}
+else {
+  Show-Status -Component "VMware" -Status "NOT FOUND" -Details "Not running"
+  $vmwareRunning = $false
+}
+
 # Overall Mode Assessment
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
@@ -268,13 +359,23 @@ elseif ($modePercentage -ge 25) {
 Write-Host "What would you like to do?" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  [1] Start Work Mode  (./work-mode.ps1)" -ForegroundColor Green
-Write-Host "  [2] Start Game Mode  (./game-mode.ps1)" -ForegroundColor Red
-Write-Host "  [3] Exit" -ForegroundColor Gray
+# Cooler Game Mode entry with emoji and a short tagline
+Write-Host -NoNewline "  [2] "
+Write-Host -NoNewline "Start " -ForegroundColor Magenta
+Write-Host -NoNewline "GAME " -ForegroundColor Red
+Write-Host "MODE  (./game-mode.ps1)" -ForegroundColor Yellow
+Write-Host "  [3] Check Again (re-run status)" -ForegroundColor Cyan
+Write-Host -NoNewline "  [X/0] "
+Write-Host "Exit" -ForegroundColor Gray
 Write-Host ""
 
-$choice = Read-Host "Enter your choice (1-3)"
+$choice = Read-Host "Enter your choice (1, 2, 3 or X/0)"
 
-switch ($choice) {
+# Normalize input for easier handling
+$choice = $choice.Trim()
+$choiceUpper = $choice.ToUpper()
+
+switch ($choiceUpper) {
   "1" {
     Write-Host ""
     Write-Host "Starting Work Mode..." -ForegroundColor Green
@@ -283,11 +384,32 @@ switch ($choice) {
   }
   "2" {
     Write-Host ""
-    Write-Host "Starting Game Mode..." -ForegroundColor Red
+    # Fun launch banner: rainbow "LET'S PLAY" with a controller
+    $banner = "LET'S PLAY"
+    $colors = @('Cyan', 'Green', 'Yellow', 'Magenta', 'Blue', 'Red')
+    Write-Host "   [PLAY] " -NoNewline -ForegroundColor Yellow
+    for ($i = 0; $i -lt $banner.Length; $i++) {
+      $char = $banner[$i]
+      $col = $colors[$i % $colors.Count]
+      Write-Host -NoNewline $char -ForegroundColor $col
+    }
+    Write-Host "  - Have fun!" -ForegroundColor Gray
     Write-Host ""
+    Start-Sleep -Milliseconds 700
     & "$PSScriptRoot\game-mode.ps1"
   }
   "3" {
+    Write-Host ""
+    Write-Host "Re-checking status..." -ForegroundColor Cyan
+    Write-Host ""
+    & "$PSScriptRoot\check-mode.ps1"
+  }
+  "X" {
+    Write-Host ""
+    Write-Host "Exiting..." -ForegroundColor Gray
+    exit 0
+  }
+  "0" {
     Write-Host ""
     Write-Host "Exiting..." -ForegroundColor Gray
     exit 0
