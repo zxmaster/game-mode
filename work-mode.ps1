@@ -253,8 +253,11 @@ if ($null -eq $lmStudioProcess) {
 
   if ($null -ne $lmStudioPath) {
     try {
-      Start-Process $lmStudioPath
-      Write-Log "[OK] LM Studio started from: $lmStudioPath"
+      # Use cmd's "start" to launch LM Studio detached so it doesn't tie up
+      # the PowerShell console (some apps spawn a console output otherwise).
+      $lmDir = Split-Path -Path $lmStudioPath -Parent
+      Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "start", '""', "`"$lmStudioPath`"" -WorkingDirectory $lmDir -ErrorAction Stop
+      Write-Log "[OK] LM Studio started (detached) from: $lmStudioPath"
       Show-ProgressBar -Activity "Initializing LM Studio" -DurationSeconds 3 -CompletedMessage "LM Studio ready"
     }
     catch {
