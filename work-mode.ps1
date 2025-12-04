@@ -3,6 +3,12 @@
 
 #Requires -Version 5.1
 
+param(
+  [switch]$NoWait,
+  [switch]$SkipLMStudio,
+  [switch]$Quiet
+)
+
 # Define log file path
 $logFile = "docker_start.log"
 
@@ -229,51 +235,56 @@ else {
 }
 
 # Start LM Studio
-Write-Log "Checking if LM Studio is running..."
-$lmStudioProcess = Get-Process -Name "LM Studio" -ErrorAction SilentlyContinue
+if (-not $SkipLMStudio) {
+  Write-Log "Checking if LM Studio is running..."
+  $lmStudioProcess = Get-Process -Name "LM Studio" -ErrorAction SilentlyContinue
 
-if ($null -eq $lmStudioProcess) {
-  Write-Log "LM Studio is not running. Starting LM Studio..."
+  if ($null -eq $lmStudioProcess) {
+    Write-Log "LM Studio is not running. Starting LM Studio..."
 
-  # Common LM Studio installation paths
-  $lmStudioPaths = @(
-    "$env:LOCALAPPDATA\Programs\LM Studio\LM Studio.exe",
-    "$env:LOCALAPPDATA\LMStudio\LM Studio.exe",
-    "C:\Program Files\LM Studio\LM Studio.exe",
-    "C:\Program Files (x86)\LM Studio\LM Studio.exe"
-  )
+    # Common LM Studio installation paths
+    $lmStudioPaths = @(
+      "$env:LOCALAPPDATA\Programs\LM Studio\LM Studio.exe",
+      "$env:LOCALAPPDATA\LMStudio\LM Studio.exe",
+      "C:\Program Files\LM Studio\LM Studio.exe",
+      "C:\Program Files (x86)\LM Studio\LM Studio.exe"
+    )
 
-  $lmStudioPath = $null
-  foreach ($path in $lmStudioPaths) {
-    if (Test-Path $path) {
-      $lmStudioPath = $path
-      break
+    $lmStudioPath = $null
+    foreach ($path in $lmStudioPaths) {
+      if (Test-Path $path) {
+        $lmStudioPath = $path
+        break
+      }
     }
-  }
 
-  if ($null -ne $lmStudioPath) {
-    try {
-      # Use cmd's "start" to launch LM Studio detached so it doesn't tie up
-      # the PowerShell console (some apps spawn a console output otherwise).
-      $lmDir = Split-Path -Path $lmStudioPath -Parent
-      Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "start", '""', "`"$lmStudioPath`"" -WorkingDirectory $lmDir -ErrorAction Stop
-      Write-Log "[OK] LM Studio started (detached) from: $lmStudioPath"
-      Show-ProgressBar -Activity "Initializing LM Studio" -DurationSeconds 3 -CompletedMessage "LM Studio ready"
+    if ($null -ne $lmStudioPath) {
+      try {
+        # Use cmd's "start" to launch LM Studio detached so it doesn't tie up
+        # the PowerShell console (some apps spawn a console output otherwise).
+        $lmDir = Split-Path -Path $lmStudioPath -Parent
+        Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "start", '""', "`"$lmStudioPath`"" -WorkingDirectory $lmDir -ErrorAction Stop
+        Write-Log "[OK] LM Studio started (detached) from: $lmStudioPath"
+        Show-ProgressBar -Activity "Initializing LM Studio" -DurationSeconds 3 -CompletedMessage "LM Studio ready"
+      }
+      catch {
+        Write-Log "[!] Error starting LM Studio: $_"
+      }
     }
-    catch {
-      Write-Log "[!] Error starting LM Studio: $_"
+    else {
+      Write-Log "[!] LM Studio executable not found in common installation locations."
+      Write-Log "    Checked locations:"
+      foreach ($path in $lmStudioPaths) {
+        Write-Log "    - $path"
+      }
     }
   }
   else {
-    Write-Log "[!] LM Studio executable not found in common installation locations."
-    Write-Log "    Checked locations:"
-    foreach ($path in $lmStudioPaths) {
-      Write-Log "    - $path"
-    }
+    Write-Log "[OK] LM Studio is already running."
   }
 }
 else {
-  Write-Log "[OK] LM Studio is already running."
+  Write-Log "[i] LM Studio startup skipped (SkipLMStudio parameter)."
 }
 
 # Load projects from config.env file
@@ -340,7 +351,154 @@ Write-Log "All projects have been processed."
 Write-Log "Script completed."
 
 # Optional: Show log file path
-Write-Host "Log file created at: $logFile" -ForegroundColor Green
+if (-not $Quiet) {
+  Write-Host "Log file created at: $logFile" -ForegroundColor Green
+  Write-Host ""
+}
 
-# Optional: Show log file content for quick review
-Write-Host "You can view the log file: $logFile" -ForegroundColor Cyan
+# Run status check after completion
+if (-not $Quiet) {
+  Write-Host "========================================" -ForegroundColor Cyan
+  Write-Host "  POST-START STATUS CHECK" -ForegroundColor White
+  Write-Host "========================================" -ForegroundColor Cyan
+  Write-Host ""
+
+  # Check WSL2
+  $wslInstalled = Get-Command wsl -ErrorAction SilentlyContinue
+  if ($null -ne $wslInstalled) {
+    try {
+      $wslDistros = wsl -l --running 2>&1
+      if ($LASTEXITCODE -eq 0 -and $wslDistros -and $wslDistros.Count -gt 1) {
+        $runningCount = ($wslDistros | Select-Object -Skip 1 | Where-Object { $_ -match '\S' }).Count
+        if ($runningCount -gt 0) {
+          Write-Host "  [OK] WSL2: $runningCount distribution(s) running" -ForegroundColor Green
+        }
+        else {
+          Write-Host "  [!] WSL2: No distributions running" -ForegroundColor Yellow
+        }
+      }
+      else {
+        Write-Host "  [!] WSL2: No distributions running" -ForegroundColor Yellow
+      }
+    }
+    catch {
+      Write-Host "  [?] WSL2: Unable to query status" -ForegroundColor DarkGray
+    }
+  }
+
+  # Check Docker Desktop
+  $dockerDesktopProcess = Get-Process "Docker Desktop" -ErrorAction SilentlyContinue
+  if ($null -ne $dockerDesktopProcess) {
+    Write-Host "  [OK] Docker Desktop: Running" -ForegroundColor Green
+  }
+  else {
+    Write-Host "  [!] Docker Desktop: Not running" -ForegroundColor Yellow
+  }
+
+  # Check Docker Engine
+  try {
+    docker info >$null 2>&1
+    if ($LASTEXITCODE -eq 0) {
+      Write-Host "  [OK] Docker Engine: Responding" -ForegroundColor Green
+
+      # Check containers
+      $runningContainers = docker ps -q 2>&1
+      if ($LASTEXITCODE -eq 0) {
+        $runningCount = if ($runningContainers) { ($runningContainers | Measure-Object).Count } else { 0 }
+        if ($runningCount -gt 0) {
+          Write-Host "  [OK] Docker Containers: $runningCount running" -ForegroundColor Green
+        }
+        else {
+          Write-Host "  [!] Docker Containers: None running" -ForegroundColor Yellow
+        }
+      }
+    }
+    else {
+      Write-Host "  [!] Docker Engine: Not responding" -ForegroundColor Yellow
+    }
+  }
+  catch {
+    Write-Host "  [!] Docker Engine: Not responding" -ForegroundColor Yellow
+  }
+
+  # Check LM Studio
+  $lmStudioProcess = Get-Process -Name "LM Studio" -ErrorAction SilentlyContinue
+  if ($null -ne $lmStudioProcess) {
+    $processCount = ($lmStudioProcess | Measure-Object).Count
+    Write-Host "  [OK] LM Studio: Running ($processCount process(es))" -ForegroundColor Green
+  }
+  else {
+    Write-Host "  [!] LM Studio: Not running" -ForegroundColor Yellow
+  }
+
+  Write-Host ""
+  Write-Host "========================================" -ForegroundColor Cyan
+  Write-Host ""
+}
+
+# Interactive menu (unless NoWait is specified)
+if (-not $NoWait -and -not $Quiet) {
+  Write-Host "What would you like to do next?" -ForegroundColor Cyan
+  Write-Host ""
+  Write-Host "  [1] Check Full Status  (./check-mode.ps1)" -ForegroundColor Cyan
+  Write-Host "  [2] Stop Work Mode  (./game-mode.ps1)" -ForegroundColor Red
+  Write-Host "  [3] View Log File" -ForegroundColor Yellow
+  Write-Host -NoNewline "  [X/0] "
+  Write-Host "Exit" -ForegroundColor Gray
+  Write-Host ""
+
+  $choice = Read-Host "Enter your choice (1, 2, 3 or X/0)"
+  $choice = $choice.Trim()
+  $choiceUpper = $choice.ToUpper()
+
+  switch ($choiceUpper) {
+    "1" {
+      Write-Host ""
+      Write-Host "Running full status check..." -ForegroundColor Cyan
+      Write-Host ""
+      & "$PSScriptRoot\check-mode.ps1"
+    }
+    "2" {
+      Write-Host ""
+      Write-Host "Stopping work mode..." -ForegroundColor Red
+      Write-Host ""
+      & "$PSScriptRoot\game-mode.ps1"
+    }
+    "3" {
+      Write-Host ""
+      if (Test-Path $logFile) {
+        Get-Content $logFile | Write-Host
+      }
+      else {
+        Write-Host "Log file not found." -ForegroundColor Yellow
+      }
+      Write-Host ""
+      Write-Host "Press any key to continue..." -ForegroundColor Gray
+      $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
+    }
+    "X" {
+      Write-Host ""
+      Write-Host "Exiting..." -ForegroundColor Gray
+      exit 0
+    }
+    "0" {
+      Write-Host ""
+      Write-Host "Exiting..." -ForegroundColor Gray
+      exit 0
+    }
+    default {
+      Write-Host ""
+      Write-Host "Invalid choice. Exiting..." -ForegroundColor Yellow
+      exit 0
+    }
+  }
+}
+elseif ($Quiet) {
+  # Quiet mode - just exit
+  exit 0
+}
+else {
+  # NoWait mode - show brief message
+  Write-Host "Work mode started. Use './check-mode.ps1' to verify status." -ForegroundColor Green
+  exit 0
+}
