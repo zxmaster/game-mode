@@ -29,18 +29,7 @@ function Test-Administrator {
 $isAdmin = Test-Administrator
 if (-not $isAdmin) {
   Write-Host "[!] This script is not running with Administrator privileges." -ForegroundColor Yellow
-  Write-Host "    Some operations (like WSL2 shutdown) may require admin rights." -ForegroundColor Yellow
-  Write-Host ""
-  if (-not $Force) {
-    $response = Read-Host "Do you want to continue anyway? (Y/N)"
-    if ($response -notmatch '^[Yy]') {
-      Write-Host "Script cancelled by user." -ForegroundColor Red
-      exit 0
-    }
-  }
-  else {
-    Write-Host "[i] Force mode enabled, continuing without prompts." -ForegroundColor Cyan
-  }
+  Write-Host "    Some operations (like WSL2 shutdown) will be skipped." -ForegroundColor Yellow
   Write-Host ""
 }
 else {
@@ -215,47 +204,7 @@ if ($SkipWSL) {
   Write-Log "[i] WSL2 shutdown skipped (SkipWSL parameter)."
 }
 elseif (-not $isAdmin) {
-  Write-Log "[!] WSL2 shutdown requires Administrator privileges."
-  if ($Force) {
-    Write-Log "[i] WSL2 shutdown skipped (Force mode without admin)."
-  }
-  else {
-    $response = Read-Host "Skip WSL2 shutdown? (Y/N)"
-    if ($response -match '^[Yy]') {
-      Write-Log "[i] WSL2 shutdown skipped by user."
-    }
-    else {
-      try {
-        # Check if WSL is installed
-        $wslInstalled = Get-Command wsl -ErrorAction SilentlyContinue
-        if ($null -eq $wslInstalled) {
-          Write-Log "[!] WSL command not found. WSL may not be installed."
-        }
-        else {
-          $wslJob = Start-Job -ScriptBlock {
-            $output = wsl --shutdown 2>&1
-            return @{ Output = $output; ExitCode = $LASTEXITCODE }
-          }
-          Show-ProgressBar -Activity "Shutting down WSL2" -DurationSeconds 3 -CompletedMessage "WSL2 shutdown complete"
-          $result = $wslJob | Wait-Job | Receive-Job
-          $jobState = $wslJob.State
-          Remove-Job -Job $wslJob
-          if ($jobState -eq "Completed" -and ($result.ExitCode -eq 0 -or $null -eq $result.ExitCode)) {
-            Write-Log "[OK] WSL2 has been shut down successfully."
-          }
-          else {
-            Write-Log "[!] WSL2 shutdown completed with potential issues. Exit code: $($result.ExitCode)"
-            if ($result.Output) {
-              Write-Log "    Output: $($result.Output)"
-            }
-          }
-        }
-      }
-      catch {
-        Write-Log "[!] Error shutting down WSL2: $_"
-      }
-    }
-  }
+  Write-Log "[!] WSL2 shutdown skipped - requires Administrator privileges."
 }
 else {
   try {
