@@ -203,10 +203,10 @@ Write-Log "Shutting down WSL2..."
 if ($SkipWSL) {
   Write-Log "[i] WSL2 shutdown skipped (SkipWSL parameter)."
 }
-elseif (-not $isAdmin) {
-  Write-Log "[!] WSL2 shutdown skipped - requires Administrator privileges."
-}
 else {
+  if (-not $isAdmin) {
+    Write-Log "[i] Attempting WSL2 shutdown without Administrator privileges..."
+  }
   try {
     # Check if WSL is installed
     $wslInstalled = Get-Command wsl -ErrorAction SilentlyContinue
